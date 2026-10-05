@@ -1,0 +1,144 @@
+// My Instagram Scheduler — database schema (PostgreSQL)
+// Models: User, Session, InstagramAccount, ScheduledPost, PostAttempt
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum PostStatus {
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+}
+
+enum AttemptStatus {
+  STARTED
+  CONTAINER_CREATED
+  PUBLISHED
+  FAILED
+  RECOVERED
+  SKIPPED
+}
+
+enum AccountStatus {
+  ACTIVE
+  EXPIRED
+  ERROR
+  DISCONNECTED
+}
+
+enum ConnectionMode {
+  FACEBOOK
+  INSTAGRAM
+  MOCK
+}
+
+enum AttemptTrigger {
+  CRON
+  MANUAL_RETRY
+  RECOVERY
+  INLINE_WORKER
+}
+
+model User {
+  id           String            @id @default(cuid())
+  email        String            @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  sessions     Session[]
+  instagramAccount InstagramAccount?
+  posts        ScheduledPost[]
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
+  expiresAt  DateTime
+
+  @@index([userId])
+}
+
+model InstagramAccount {
+  id                 String        @id @default(cuid())
+  userId             String        @unique
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mode               ConnectionMode
+  igUserId           String
+  username           String
+  fullName           String?
+  profilePictureUrl  String?
+  accountType        String?
+  fbPageId           String?
+  fbPageName         String?
+  // Access tokens are stored AES-256-GCM encrypted at rest (see src/lib/crypto.ts).
+  accessToken        String
+  tokenExpiresAt     DateTime?
+  scopes             String?
+  status             AccountStatus @default(ACTIVE)
+  lastError          String?
+  connectedAt        DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+}
+
+model ScheduledPost {
+  id               String        @id @default(cuid())
+  userId           String
+  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  imageUrl         String
+  imagePublicId    String?
+  imageWidth       Int?
+  imageHeight      Int?
+  caption          String        @default("")
+  // Absolute instant (UTC). The wall-clock time the user picked lives in `timezone`.
+  scheduledAt      DateTime
+  timezone         String
+  status           PostStatus    @default(SCHEDULED)
+  instagramMediaId String?
+  publishedAt      DateTime?
+  errorMessage     String?
+  errorCode        String?
+  attemptCount     Int           @default(0)
+  nextRetryAt      DateTime?
+  lockedAt         DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  attempts         PostAttempt[]
+
+  @@index([userId, status])
+  @@index([status, scheduledAt])
+  @@index([status, nextRetryAt])
+}
+
+model PostAttempt {
+  id               String        @id @default(cuid())
+  postId           String
+  post             ScheduledPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  attemptNumber    Int
+  status           AttemptStatus @default(STARTED)
+  trigger          AttemptTrigger @default(CRON)
+  containerId      String?
+  instagramMediaId String?
+  // Sanitized JSON of the last relevant Graph API response (never contains tokens).
+  apiResponse      Json?
+  errorCode        String?
+  errorMessage     String?
+  retryable        Boolean       @default(false)
+  startedAt        DateTime      @default(now())
+  finishedAt       DateTime?
+  durationMs       Int?
+
+  @@index([postId])
+  @@index([startedAt])
+}

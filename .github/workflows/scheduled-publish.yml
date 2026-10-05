@@ -1,0 +1,29 @@
+# Runs the publish pipeline every 5 minutes (free on any GitHub plan).
+# Recommended trigger for the Vercel Hobby plan, whose built-in cron is
+# limited to once per day. The endpoint is idempotent — overlapping triggers
+# can never double-publish a post.
+#
+# Setup:
+#   repository Settings → Secrets and variables → Actions
+#   - Secret  CRON_SECRET   (same value as the CRON_SECRET env var on Vercel)
+#   - Variable APP_URL      (e.g. https://my-instagram-scheduler.vercel.app)
+
+name: Scheduled publishing
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  publish-due-posts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Trigger publish cycle
+        run: |
+          curl -fsS --max-time 120 \
+            -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ vars.APP_URL }}/api/cron/publish" \
+            || echo "Publish cycle request failed (will retry on next run)"
