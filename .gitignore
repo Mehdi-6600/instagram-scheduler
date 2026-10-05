@@ -147,3 +147,12 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# ---- My Instagram Scheduler ----
+# Generated Prisma client (recreated by `prisma generate` on build)
+src/generated/
+# Local dev image storage (STORAGE_DRIVER=local)
+data/
+# Embedded/scratch postgres
+pgdata/
+*.sqlite
